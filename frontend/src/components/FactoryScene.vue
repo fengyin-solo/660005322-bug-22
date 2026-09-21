@@ -9,6 +9,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js'
 import { useFactoryStore } from '../store/factory'
 import { DEVICE_COLORS, STATUS_COLORS } from '../types'
+import { healthOf, healthColor } from '../utils/health'
 const store = useFactoryStore()
 const container = ref<HTMLDivElement>()
 let scene: THREE.Scene, camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer, controls: OrbitControls, animId: number
@@ -69,13 +70,39 @@ function createDeviceMesh(dev: any) {
   ctx.fillText(`${dev.temperature.toFixed(1)}°C | ${dev.status}`, 64, 48)
   const tex = new THREE.CanvasTexture(canvas)
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }))
+  sprite.name = 'dev-label'
+  sprite.userData.canvas = canvas
   sprite.position.y = 1.4; sprite.scale.set(1.5, 0.75, 1); group.add(sprite)
 
   return group
 }
 
+function paintLabel(sprite: THREE.Sprite, dev: any) {
+  const canvas = sprite.userData.canvas as HTMLCanvasElement | undefined
+  if (!canvas) return
+  const ctx = canvas.getContext('2d')!
+  const color = STATUS_COLORS[dev.status] || '#95a5a6'
+  ctx.clearRect(0, 0, 128, 64)
+  ctx.fillStyle = color; ctx.font = 'bold 16px system-ui'; ctx.textAlign = 'center'
+  ctx.fillText(`${dev.type}-${dev.id}`, 64, 24)
+  ctx.fillStyle = '#fff'; ctx.font = '11px system-ui'
+  ctx.fillText(`${dev.temperature.toFixed(1)}°C | ${dev.status}`, 64, 42)
+  ctx.fillStyle = healthColor(healthOf(dev)); ctx.font = 'bold 11px system-ui'
+  ctx.fillText(`健康 ${healthOf(dev).toFixed(1)}`, 64, 58)
+  ;(sprite.material as THREE.SpriteMaterial).map!.needsUpdate = true
+}
+
 function updateDevices() {
   const devs = store.data?.devices || []
+  const liveIds = new Set(devs.map(d => d.id))
+  for (const [id, mesh] of [...deviceMeshes.entries()]) {
+    if (!liveIds.has(id)) {
+      deviceGroup.remove(mesh)
+      const sprite = mesh.children.find(c => c instanceof THREE.Sprite) as THREE.Sprite | undefined
+      sprite && ((sprite.material as THREE.SpriteMaterial).map as THREE.Texture | undefined)?.dispose?.()
+      deviceMeshes.delete(id)
+    }
+  }
   for (const dev of devs) {
     let mesh = deviceMeshes.get(dev.id)
     if (!mesh) { mesh = createDeviceMesh(dev); deviceGroup.add(mesh); deviceMeshes.set(dev.id, mesh) }
@@ -87,6 +114,8 @@ function updateDevices() {
         body.material.color.set(color); body.material.emissive.set(color)
       }
     }
+    const label = mesh.children.find(c => c instanceof THREE.Sprite && c.name === 'dev-label') as THREE.Sprite | undefined
+    if (label) paintLabel(label, dev)
   }
 }
 

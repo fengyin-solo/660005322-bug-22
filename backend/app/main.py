@@ -5,6 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import numpy as np
 
+from .health import device_health, health_summary
+
 app = FastAPI(title="Digital Twin Factory Monitor")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
@@ -12,6 +14,7 @@ DEVICE_TYPES = ["CNC", "RobotArm", "Conveyor", "AGV", "InjectionMolding", "QCSta
 STATUSES = ["RUNNING", "IDLE", "FAULT", "OFFLINE"]
 ACTIVE_CLIENTS: list[WebSocket] = []
 SIMULATOR_RUNNING = True
+LOOP = None
 
 class DeviceState:
     def __init__(self, did: int, dtype: str, x: float, y: float, z: float):
@@ -29,12 +32,16 @@ class DeviceState:
         self.quality_rate = random.uniform(0.95, 0.995)
 
     def to_dict(self):
+        health = device_health(self)
         return {
             "id": self.id, "type": self.type, "status": self.status,
             "position": self.position, "temperature": round(self.temperature, 2),
             "vibration": round(self.vibration, 3), "pressure": round(self.pressure, 2),
             "production_count": self.production_count, "fault_count": self.fault_count,
-            "uptime": round(self.uptime, 2), "quality_rate": round(self.quality_rate, 3)
+            "uptime": round(self.uptime, 2), "quality_rate": round(self.quality_rate, 3),
+            "availability": health["availability"],
+            "health_score": health["health_score"],
+            "online": health["online"],
         }
 
 devices = {i: DeviceState(i, random.choice(DEVICE_TYPES),
@@ -108,7 +115,8 @@ def simulate():
                 "devices": [d.to_dict() for d in devices.values()],
                 "production": sum(d.production_count for d in devices.values()),
                 "anomalies": anomaly_log[-5:] if anomaly_log else [],
-                "oee": calculate_oee()
+                "oee": calculate_oee(),
+                "health": health_summary(devices.values())
             }
             msg = json.dumps(payload)
         except:
@@ -117,7 +125,7 @@ def simulate():
         dead = []
         for ws in ACTIVE_CLIENTS:
             try:
-                asyncio.run_coroutine_threadsafe(ws.send_text(msg), asyncio.get_event_loop())
+                asyncio.run_coroutine_threadsafe(ws.send_text(msg), LOOP)
             except:
                 dead.append(ws)
         for ws in dead:
@@ -151,13 +159,17 @@ class OEEAnalysis(BaseModel):
 
 @app.on_event("startup")
 async def startup():
+    global LOOP
+    LOOP = asyncio.get_running_loop()
     t = threading.Thread(target=simulate, daemon=True)
     t.start()
 
 
 @app.get("/api/devices")
 def get_devices():
-    return {"devices": [d.to_dict() for d in devices.values()], "anomalies": anomaly_log[-10:]}
+    return {"devices": [d.to_dict() for d in devices.values()],
+            "anomalies": anomaly_log[-10:],
+            "health": health_summary(devices.values())}
 
 
 @app.get("/api/oee")

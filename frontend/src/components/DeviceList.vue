@@ -10,6 +10,7 @@
         <div class="dev-metrics">
           <span class="metric">{{ dev.temperature.toFixed(1) }}°C</span>
           <span class="metric">{{ dev.vibration.toFixed(2) }}mm/s</span>
+          <span class="metric health" :style="{color: healthColor(healthOf(dev))}">❤ {{ healthOf(dev).toFixed(1) }}</span>
         </div>
         <el-tag size="small" :type="tagType(dev.status)">{{ dev.status }}</el-tag>
       </div>
@@ -21,6 +22,7 @@
 import { computed } from 'vue'
 import { useFactoryStore } from '../store/factory'
 import { STATUS_COLORS } from '../types'
+import { healthOf, healthColor } from '../utils/health'
 const store = useFactoryStore()
 const devices = computed(() => store.data?.devices || [])
 
