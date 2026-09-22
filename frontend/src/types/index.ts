@@ -3,6 +3,7 @@ export interface Device {
   temperature: number; vibration: number; pressure: number
   production_count: number; fault_count: number
   uptime: number; quality_rate: number
+  online_rate: number; health_score: number
 }
 
 export interface Anomaly {

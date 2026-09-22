@@ -4,6 +4,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import numpy as np
+from .health import availability_ratio, health_metrics
 
 app = FastAPI(title="Digital Twin Factory Monitor")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -34,7 +35,8 @@ class DeviceState:
             "position": self.position, "temperature": round(self.temperature, 2),
             "vibration": round(self.vibration, 3), "pressure": round(self.pressure, 2),
             "production_count": self.production_count, "fault_count": self.fault_count,
-            "uptime": round(self.uptime, 2), "quality_rate": round(self.quality_rate, 3)
+            "uptime": round(self.uptime, 2), "quality_rate": round(self.quality_rate, 3),
+            **health_metrics(self.uptime, self.fault_count),
         }
 
 devices = {i: DeviceState(i, random.choice(DEVICE_TYPES),
@@ -132,7 +134,7 @@ def calculate_oee():
     for dev in devices.values():
         if dev.uptime == 0:
             continue
-        availability = min(1.0, dev.uptime / max(1, dev.uptime + dev.fault_count))
+        availability = availability_ratio(dev.uptime, dev.fault_count)
         performance = min(1.0, dev.production_count / max(1, dev.uptime / 2))
         quality = dev.quality_rate
         oee = round(availability * performance * quality * 100, 1)
@@ -163,6 +165,16 @@ def get_devices():
 @app.get("/api/oee")
 def get_oee():
     return {"oee": calculate_oee()}
+
+
+@app.get("/api/health")
+def get_health():
+    """设备健康度统一口径出口，字段与 WS 设备快照中的完全一致。"""
+    return {"health": [
+        {"id": d.id, "type": d.type, "status": d.status,
+         **health_metrics(d.uptime, d.fault_count)}
+        for d in devices.values()
+    ]}
 
 
 @app.get("/api/production")

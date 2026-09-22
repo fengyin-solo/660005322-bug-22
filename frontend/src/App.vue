@@ -12,6 +12,7 @@
       <div class="scene-col"><FactoryScene /></div>
       <div class="panel-col">
         <DeviceList />
+        <DeviceHealth />
         <AnomalyList />
       </div>
     </div>
@@ -27,6 +28,7 @@
 import { onMounted, onUnmounted } from 'vue'
 import FactoryScene from './components/FactoryScene.vue'
 import DeviceList from './components/DeviceList.vue'
+import DeviceHealth from './components/DeviceHealth.vue'
 import AnomalyList from './components/AnomalyList.vue'
 import OEEChart from './components/OEEChart.vue'
 import TrendPanel from './components/TrendPanel.vue'
